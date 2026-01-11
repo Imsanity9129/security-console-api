@@ -1,0 +1,13 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environment (never commit)
+.venv/
+
+# Env vars / secrets (future)
+.env
+
+# Editor / OS junk
+.vscode/
+.DS_Store
