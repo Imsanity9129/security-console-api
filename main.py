@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+from fastapi import Header, HTTPException, Depends
 from datetime import datetime, timezone
 import os
 import platform
@@ -39,6 +41,24 @@ def run_cmd(argv: list[str], timeout_s: int = 2) -> dict:
     except subprocess.TimeoutExpired:
         return {"argv": argv, "error": "timeout"}
 
+def require_api_key(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key")
+):
+    expected = os.environ.get("API_KEY")
+
+    if not expected:
+        # Server misconfiguration (no API key set)
+        raise HTTPException(
+            status_code=500,
+            detail="API key not configured on server",
+        )
+
+    if x_api_key != expected:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid API key",
+        )
+
 
 @app.get("/health")
 def health():
@@ -48,7 +68,7 @@ def health():
     }
 
 
-@app.get("/sysinfo")
+@app.get("/sysinfo", dependencies=[Depends(require_api_key)])
 def sysinfo():
     # Host / OS identity
     hostname = platform.node()
@@ -116,7 +136,7 @@ def sysinfo():
         "whoami": whoami,
         "uname": uname,
     }
-@app.get("/sessions")
+@app.get("/sessions", dependencies=[Depends(require_api_key)])
 def sessions():
     return {
         "time_utc": datetime.now(timezone.utc).isoformat(),
@@ -126,14 +146,14 @@ def sessions():
         },
     }
     
-@app.get("/ufw")
+@app.get("/ufw", dependencies=[Depends(require_api_key)])
 def ufw_status():
     return {
         "time_utc": datetime.now(timezone.utc).isoformat(),
         "ufw": run_cmd(["sudo", "-n", "/usr/sbin/ufw", "status", "verbose"]),
     }
 
-@app.get("/ssh-failures")
+@app.get("/ssh-failures", dependencies=[Depends(require_api_key)])
 def ssh_failures():
     return {
         "time_utc": datetime.now(timezone.utc).isoformat(),
