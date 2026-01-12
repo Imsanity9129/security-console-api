@@ -116,3 +116,28 @@ def sysinfo():
         "whoami": whoami,
         "uname": uname,
     }
+@app.get("/sessions")
+def sessions():
+    return {
+        "time_utc": datetime.now(timezone.utc).isoformat(),
+        "active_sessions": {
+            "who": run_cmd(["who"]),
+            "w": run_cmd(["w"]),
+        },
+    }
+    
+@app.get("/ufw")
+def ufw_status():
+    return {
+        "time_utc": datetime.now(timezone.utc).isoformat(),
+        "ufw": run_cmd(["sudo", "-n", "/usr/sbin/ufw", "status", "verbose"]),
+    }
+
+@app.get("/ssh-failures")
+def ssh_failures():
+    return {
+        "time_utc": datetime.now(timezone.utc).isoformat(),
+        "recent_failures": run_cmd(
+            ["bash", "-c", "tail -n 200 /var/log/auth.log | grep 'Failed password' | tail -n 50"]
+        ),
+    }
