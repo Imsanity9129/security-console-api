@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import os
-from fastapi import Header, HTTPException, Depends
-from datetime import datetime, timezone
-import os
 import platform
 import shutil
 import subprocess
+
+from fastapi import Header, HTTPException, Depends
+from datetime import datetime, timezone
+from ids.ssh_authlog import read_recent_ssh_failures, summarize_failures
+from ids.rules import generate_ssh_bruteforce_alerts
 
 from fastapi import FastAPI
 
@@ -161,3 +163,17 @@ def ssh_failures():
             ["bash", "-c", "tail -n 200 /var/log/auth.log | grep 'Failed password' | tail -n 50"]
         ),
     }
+@app.get("/ids/ssh/summary", dependencies=[Depends(require_api_key)])
+def ids_ssh_summary():
+    events = read_recent_ssh_failures()
+    return summarize_failures(events)
+
+
+@app.get("/ids/alerts", dependencies=[Depends(require_api_key)])
+def ids_alerts():
+    events = read_recent_ssh_failures()
+    summary = summarize_failures(events)
+    alerts = generate_ssh_bruteforce_alerts(summary)
+
+    # dataclass -> dict so FastAPI can return JSON cleanly
+    return [a.__dict__ for a in alerts]
