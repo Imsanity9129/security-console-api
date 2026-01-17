@@ -9,6 +9,8 @@ from fastapi import Header, HTTPException, Depends
 from datetime import datetime, timezone
 from ids.ssh_authlog import read_recent_ssh_failures, summarize_failures
 from ids.rules import generate_ssh_bruteforce_alerts
+from ids.db import init_db
+from ids.db import insert_ssh_failure_events, query_ssh_summary, query_ip_breakdown
 
 from fastapi import FastAPI
 
@@ -17,6 +19,10 @@ app = FastAPI(
     title="Security Console API",
     version="0.1.0",
 )
+
+@app.on_event("startup")
+def _startup() -> None:
+    init_db()
 
 
 def run_cmd(argv: list[str], timeout_s: int = 2) -> dict:
@@ -165,15 +171,57 @@ def ssh_failures():
     }
 @app.get("/ids/ssh/summary", dependencies=[Depends(require_api_key)])
 def ids_ssh_summary():
-    events = read_recent_ssh_failures()
-    return summarize_failures(events)
+    events = read_recent_ssh_failures(tail_lines=500)
+    
+    rows = [
+        {
+            "ts": e.ts,
+            "host": e.host,
+            "pid": e.pid,
+            "user": e.user,
+            "ip": e.ip,
+            "port": e.port,
+            "count": e.count,
+            "raw": e.raw,
+        }
+        for e in events
+    ]
+    
+    inserted = insert_ssh_failure_events(rows)
+    
+    summary = query_ssh_summary()
+    top_ips = query_ip_breakdown(limit=10)
+    
+    return {
+        **summary,
+        "top_ips": top_ips,
+        "db_inserted": inserted,
+    }
 
 
 @app.get("/ids/alerts", dependencies=[Depends(require_api_key)])
 def ids_alerts():
-    events = read_recent_ssh_failures()
-    summary = summarize_failures(events)
-    alerts = generate_ssh_bruteforce_alerts(summary)
-
-    # dataclass -> dict so FastAPI can return JSON cleanly
-    return [a.__dict__ for a in alerts]
+    summary = query_ssh_summary()
+    top_ips = query_ip_breakdown(limit=50)  # more room for alerting logic
+    
+    alerts = []
+    
+    # Example brute-force rule: any single IP with >= 5 failures
+    THRESH = 5
+    for row in top_ips:
+        if row["failures"] >= THRESH:
+            alerts.append(
+                {
+                    "type": "SSH_BRUTEFORCE_IP_THRESHOLD",
+                    "severity": "high",
+                    "ip": row["ip"],
+                    "failures": row["failures"],
+                    "sessions": row["sessions"],
+                    "threshold": THRESH,
+                }
+            )
+    
+    return {
+        "summary": summary,
+        "alerts": alerts,
+    }

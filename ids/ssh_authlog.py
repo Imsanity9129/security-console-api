@@ -47,7 +47,8 @@ class SshFailureEvent:
     user: str
     ip: str
     port: int
-    count: int               # 1 for normal lines, >1 for "message repeated"
+    count: int
+    raw: str = " "	    # 1 for normal lines, >1 for "message repeated"
 
 
 def parse_line_to_failure_events(line: str) -> List[SshFailureEvent]:
@@ -71,6 +72,7 @@ def parse_line_to_failure_events(line: str) -> List[SshFailureEvent]:
                 ip=m.group("ip"),
                 port=int(m.group("port")),
                 count=1,
+		raw=line.strip(),
             )
         ]
 
@@ -92,6 +94,7 @@ def parse_line_to_failure_events(line: str) -> List[SshFailureEvent]:
                 ip=m2.group(2),
                 port=int(m2.group(3)),
                 count=int(r.group("count")),
+		raw=line.strip(),
             )
         ]
 
